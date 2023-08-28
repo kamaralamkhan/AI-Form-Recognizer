@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Upload and API Request</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Upload and API Request</h1>
+    <form id="upload-form">
+        <label for="image-type">Select Document Type:</label>
+        <select id="image-type">
+            <option value="aadhar">Aadhar Card</option>
+            <option value="pan">PAN Card</option>
+        </select>
+        <input type="file" id="image-input" accept="image/*" />
+        <button type="submit">Upload and Analyze</button>
+    </form>
+    <div id="result"></div>
+    <div id="analysis-result"></div>
+    <div id="results"></div>
+
+    <script>
+        document.getElementById('upload-form').addEventListener('submit', async function (event) {
+            event.preventDefault();
+
+            const apiKey = 'd8ab06fd74524bbfb9e562adc332b274';
+            const imageType = document.getElementById('image-type').value;
+            const modelId = imageType === 'aadhar'
+                ? '5b3f4445-b63d-45f9-98ea-91cb77221a62' // Aadhar model ID
+                : 'b60003e3-5ce6-4157-ae23-edfc7fd76968'; // PAN model ID
+            const apiUrl = `https://workathoncognitive2.cognitiveservices.azure.com/formrecognizer/v2.1/custom/models/${modelId}/analyze?includeTextDetails=true`;
+
+            const imageInput = document.getElementById('image-input');
+            if (!imageInput.files || imageInput.files.length === 0) {
+                alert('Please select an image file.');
+                return;
+            }
+
+            const imageFile = imageInput.files[0];
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Ocp-Apim-Subscription-Key': apiKey,
+                        'Content-Type': 'application/octet-stream',
+                    },
+                    body: imageFile,
+                });
+
+                if (response.ok) {
+                    const operationLocation = response.headers.get('Operation-Location');
+                    document.getElementById('result').innerHTML = `Operation Location: ${operationLocation}`;
+                    await waitForAnalysisResult(operationLocation, imageType); // Pass imageType as a parameter
+                } else {
+                    const errorText = await response.text();
+                    document.getElementById('result').innerHTML = `Error: ${errorText}`;
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `An error occurred: ${error.message}`;
+            }
+        });
+
+        async function waitForAnalysisResult(operationLocation, imageType) { // Add imageType as a parameter
+            const apiKey = 'd8ab06fd74524bbfb9e562adc332b274';
+
+            try {
+                while (true) {
+                    const response = await fetch(operationLocation, {
+                        headers: {
+                            'Ocp-Apim-Subscription-Key': apiKey,
+                        },
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.status === 'succeeded') {
+                            displayResults(result.analyzeResult.documentResults[0].fields, imageType); // Pass imageType as a parameter
+                            break;
+                        }
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+            } catch (error) {
+                document.getElementById('analysis-result').innerHTML = `An error occurred while retrieving analysis result: ${error.message}`;
+            }
+        }
+
+        // Display the extracted data as a table
+        function displayResults(extractedData, imageType) { // Add imageType as a parameter
+            const resultsDiv = document.getElementById("results");
+
+            let resultHtml = "<h2>Extracted Data:</h2>";
+            resultHtml += "<table>";
+
+            const keys = imageType === 'aadhar' // Set keys based on the selected document type
+                ? ["aadhaar number", "name", "gender", "date of birth"]
+                : ["pan number", "name", "father's/mother's name", "date of birth"];
+            resultHtml += "<tr>";
+            for (const key of keys) {
+                resultHtml += `<td>${key}</td>`;
+            }
+            resultHtml += "</tr>";
+
+            resultHtml += "<tr>";
+            for (const key of keys) {
+                const value = extractedData[key]?.valueString || "N/A";
+                resultHtml += `<td>${value}</td>`;
+            }
+            resultHtml += "</tr>";
+
+            resultHtml += "</table>";
+            resultsDiv.innerHTML = resultHtml;
+        }
+    </script>
+</body>
+</html>
